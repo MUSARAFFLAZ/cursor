@@ -27,7 +27,22 @@ A beautiful, modern website with authentication and notes management built with 
 2. Create a new project
 3. Wait for the project to be set up (takes a few minutes)
 
-#### 2. Create the Notes Table
+#### 2. Understanding Supabase Auth (Important!)
+
+**You don't need to create a users table!** Supabase Auth automatically manages user authentication data in a system table called `auth.users`. This table:
+
+- Is automatically created when you set up your Supabase project
+- Stores user email, password (hashed), and authentication data
+- Is managed by Supabase and not visible in the Table Editor
+- Can be viewed in the **Authentication** section of your Supabase dashboard
+- Is referenced by the `notes` table via `user_id UUID REFERENCES auth.users(id)`
+
+**To view your users:**
+1. Go to your Supabase dashboard
+2. Click on **Authentication** in the left sidebar
+3. Click on **Users** to see all registered users
+
+#### 3. Create the Notes Table
 
 1. In your Supabase dashboard, go to **SQL Editor**
 2. Run the following SQL to create the `notes` table:
@@ -80,12 +95,12 @@ CREATE TRIGGER update_notes_updated_at BEFORE UPDATE ON notes
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ```
 
-#### 3. Get Your Supabase Credentials
+#### 4. Get Your Supabase Credentials
 
 1. In your Supabase dashboard, go to **Settings** → **API**
 2. Copy your **Project URL** and **anon/public key**
 
-#### 4. Configure the Application
+#### 5. Configure the Application
 
 1. Open `config.js` in the project root
 2. Replace the placeholder values with your Supabase credentials:
@@ -95,7 +110,7 @@ const SUPABASE_URL = 'YOUR_SUPABASE_URL';  // Replace with your Project URL
 const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';  // Replace with your anon key
 ```
 
-#### 5. Run the Application
+#### 6. Run the Application
 
 1. Simply open `index.html` in your web browser
 2. Or use a local development server:
@@ -185,6 +200,12 @@ You can easily customize:
 - Make sure you've run the SQL script to create the table
 - Check that RLS policies are correctly set up
 - Verify your user is authenticated
+
+### Where are users stored?
+- Users are automatically stored in Supabase's `auth.users` system table
+- This table is managed by Supabase Auth and is not visible in Table Editor
+- View users in: **Authentication** → **Users** in your Supabase dashboard
+- You only need to create the `notes` table - user authentication is handled automatically!
 
 ## License
 
