@@ -42,6 +42,47 @@ A beautiful, modern website with authentication and notes management built with 
 2. Click on **Authentication** in the left sidebar
 3. Click on **Users** to see all registered users
 
+**Important: Email Confirmation Settings**
+- By default, Supabase requires email confirmation before users can log in
+- To disable email confirmation (for testing):
+  1. Go to **Authentication** → **Settings** → **Email Auth**
+  2. Toggle off **"Enable email confirmations"**
+  3. Save changes
+- If email confirmation is enabled, users must verify their email before logging in
+- Sessions are automatically stored in browser localStorage and persist across page refreshes
+
+**Configure Redirect URLs (Required for Email Verification)**
+To fix the "localhost:3000" redirect issue, you need to add your website URLs to Supabase:
+
+1. Go to your Supabase dashboard
+2. Navigate to **Authentication** → **URL Configuration**
+3. Add your site URLs to **Redirect URLs**:
+   - For local development: `http://localhost:8000`, `http://127.0.0.1:8000`
+   - For your live site: `https://yourdomain.com`, `https://www.yourdomain.com`
+   - For file:// protocol: `http://localhost:8000` (use a local server)
+4. Add the same URLs to **Site URL** field
+5. Click **Save**
+
+**Example Redirect URLs:**
+```
+http://localhost:8000
+http://127.0.0.1:8000
+https://yourdomain.com
+https://www.yourdomain.com
+```
+
+**Note:** If you're opening `index.html` directly (file://), email verification won't work. Use a local server instead:
+```bash
+# Python
+python -m http.server 8000
+
+# Node.js
+npx http-server -p 8000
+
+# PHP
+php -S localhost:8000
+```
+
 #### 3. Create the Notes Table
 
 1. In your Supabase dashboard, go to **SQL Editor**
@@ -195,6 +236,16 @@ You can easily customize:
 - Ensure email confirmation is disabled in Supabase (Settings → Auth → Email Auth)
 - Or check your email for the confirmation link
 - Verify your Supabase credentials are correct
+
+### Email verification redirects to localhost:3000?
+- This happens because redirect URLs aren't configured in Supabase
+- **Fix:** Go to Supabase Dashboard → **Authentication** → **URL Configuration**
+- Add your website URLs to **Redirect URLs**:
+  - `http://localhost:8000` (for local development)
+  - `https://yourdomain.com` (for your live site)
+- Add the same URL to **Site URL** field
+- Click **Save**
+- Make sure you're using a local server (not opening file:// directly)
 
 ### Database errors?
 - Make sure you've run the SQL script to create the table

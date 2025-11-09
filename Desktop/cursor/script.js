@@ -5,56 +5,196 @@ let allNotes = [];
 
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
+    // Check for email verification token in URL
+    await handleEmailVerification();
     await checkAuthStatus();
     setupEventListeners();
 });
 
+// Handle email verification from URL
+async function handleEmailVerification() {
+    if (!supabase) {
+        // Wait for Supabase to initialize
+        let retries = 0;
+        while (!supabase && retries < 20) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            retries++;
+        }
+    }
+
+    if (!supabase) return;
+
+    try {
+        // Check URL parameters for email verification
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const type = urlParams.get('type');
+        const tokenHash = urlParams.get('token_hash');
+        
+        // Check URL hash for access token (Supabase redirects here)
+        const hash = window.location.hash;
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        const error = hashParams.get('error');
+        const errorDescription = hashParams.get('error_description');
+
+        // Handle error in URL
+        if (error) {
+            console.error('Auth error from URL:', error, errorDescription);
+            alert(`Authentication error: ${errorDescription || error}`);
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+        }
+
+        // Handle hash-based verification (most common for Supabase email verification)
+        if (accessToken && refreshToken) {
+            // Set the session from the tokens in the URL
+            const { data, error: sessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+            });
+
+            if (sessionError) {
+                console.error('Session error:', sessionError);
+                alert('Email verification failed. Please try again.');
+            } else if (data && data.user) {
+                // Email verified successfully
+                currentUser = data.user;
+                updateUIForLoggedInUser();
+                await loadNotes();
+                alert('✅ Email verified successfully! You are now logged in.');
+                
+                // Clean up URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+        // Handle token-based verification (alternative method)
+        else if (token && type === 'email') {
+            const { data, error: verifyError } = await supabase.auth.verifyOtp({
+                token_hash: token,
+                type: 'email'
+            });
+
+            if (verifyError) {
+                console.error('Email verification error:', verifyError);
+                alert('Email verification failed. Please try again or request a new verification link.');
+            } else if (data && data.user) {
+                currentUser = data.user;
+                updateUIForLoggedInUser();
+                await loadNotes();
+                alert('✅ Email verified successfully! You are now logged in.');
+                
+                // Clean up URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+        // Handle token_hash parameter (another method)
+        else if (tokenHash) {
+            const { data, error: verifyError } = await supabase.auth.verifyOtp({
+                token_hash: tokenHash,
+                type: 'email'
+            });
+
+            if (verifyError) {
+                console.error('Email verification error:', verifyError);
+                alert('Email verification failed. Please try again.');
+            } else if (data && data.user) {
+                currentUser = data.user;
+                updateUIForLoggedInUser();
+                await loadNotes();
+                alert('✅ Email verified successfully! You are now logged in.');
+                
+                // Clean up URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+    } catch (error) {
+        console.error('Error handling email verification:', error);
+        alert('An error occurred during email verification. Please try again.');
+    }
+}
+
 // Check authentication status on page load
 async function checkAuthStatus() {
     try {
-        // Check if supabase is initialized
+        // Wait a bit for Supabase to initialize if needed
+        let retries = 0;
+        while (!supabase && retries < 20) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            retries++;
+        }
+
         if (!supabase) {
             console.error('Supabase client not initialized. Check config.js');
             return;
         }
 
+        // Get session from localStorage (Supabase stores it automatically)
         const { data: { session }, error } = await supabase.auth.getSession();
+        
         if (error) {
             console.error('Auth session error:', error);
+            // Clear any invalid session
+            await supabase.auth.signOut();
+            updateUIForLoggedOutUser();
             return;
         }
 
         if (session && session.user) {
             currentUser = session.user;
+            console.log('✅ User session found:', currentUser.email);
             updateUIForLoggedInUser();
             await loadNotes();
         } else {
+            console.log('ℹ️ No active session found');
             updateUIForLoggedOutUser();
         }
     } catch (error) {
         console.error('Error checking auth status:', error);
         showError('note-error', 'Failed to check authentication status');
+        updateUIForLoggedOutUser();
     }
 }
 
 // Listen for auth state changes
-if (supabase) {
-    supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-            currentUser = session.user;
-            updateUIForLoggedInUser();
-            loadNotes();
-        } else if (event === 'SIGNED_OUT') {
-            currentUser = null;
-            updateUIForLoggedOutUser();
-            allNotes = [];
-            const notesContainer = document.getElementById('notes-container');
-            if (notesContainer) {
-                notesContainer.innerHTML = '';
+// This ensures the UI updates when auth state changes (login, logout, token refresh)
+function setupAuthListener() {
+    if (supabase) {
+        supabase.auth.onAuthStateChange((event, session) => {
+            console.log('Auth state changed:', event, session?.user?.email || 'no user');
+            
+            if (event === 'SIGNED_IN' && session && session.user) {
+                currentUser = session.user;
+                console.log('✅ User signed in:', currentUser.email);
+                updateUIForLoggedInUser();
+                loadNotes();
+            } else if (event === 'SIGNED_OUT' || !session) {
+                currentUser = null;
+                console.log('ℹ️ User signed out');
+                updateUIForLoggedOutUser();
+                allNotes = [];
+                const notesContainer = document.getElementById('notes-container');
+                if (notesContainer) {
+                    notesContainer.innerHTML = '';
+                }
+            } else if (event === 'TOKEN_REFRESHED' && session) {
+                // Session refreshed, update current user
+                if (session.user) {
+                    currentUser = session.user;
+                    console.log('🔄 Session refreshed');
+                }
             }
-        }
-    });
+        });
+    } else {
+        // Retry setting up listener if Supabase isn't ready yet
+        setTimeout(setupAuthListener, 100);
+    }
 }
+
+// Setup auth listener when Supabase is ready
+setupAuthListener();
 
 // Update UI for logged in user
 function updateUIForLoggedInUser() {
@@ -175,31 +315,60 @@ async function handleSignup(event) {
             throw new Error('Password must be at least 6 characters long');
         }
 
+        // Get the current page URL for redirect after email verification
+        const redirectUrl = window.location.origin + window.location.pathname;
+        
         const { data, error } = await supabase.auth.signUp({
             email: email,
-            password: password
+            password: password,
+            options: {
+                emailRedirectTo: redirectUrl
+            }
         });
 
         if (error) throw error;
 
-        // Show success message
-        errorDiv.textContent = 'Account created successfully! Please check your email to verify your account.';
-        errorDiv.style.color = 'green';
-        
-        // Auto login after signup
-        setTimeout(async () => {
+        // Check if email confirmation is required
+        if (data.user && !data.session) {
+            // Email confirmation required
+            errorDiv.textContent = 'Account created! Please check your email to verify your account before logging in.';
+            errorDiv.style.color = 'orange';
+            return;
+        }
+
+        // If session exists, user is automatically logged in
+        if (data.session && data.user) {
+            currentUser = data.user;
+            errorDiv.textContent = 'Account created successfully! You are now logged in.';
+            errorDiv.style.color = 'green';
+            
+            setTimeout(() => {
+                closeModal('signup-modal');
+                updateUIForLoggedInUser();
+                loadNotes();
+            }, 1500);
+        } else {
+            // Try to sign in automatically (if email confirmation is disabled)
             const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
                 email: email,
                 password: password
             });
             
-            if (!loginError) {
+            if (!loginError && loginData.user) {
                 currentUser = loginData.user;
-                closeModal('signup-modal');
-                updateUIForLoggedInUser();
-                await loadNotes();
+                errorDiv.textContent = 'Account created and logged in successfully!';
+                errorDiv.style.color = 'green';
+                
+                setTimeout(() => {
+                    closeModal('signup-modal');
+                    updateUIForLoggedInUser();
+                    loadNotes();
+                }, 1500);
+            } else {
+                errorDiv.textContent = 'Account created! Please check your email to verify your account.';
+                errorDiv.style.color = 'orange';
             }
-        }, 2000);
+        }
     } catch (error) {
         console.error('Signup error:', error);
         errorDiv.textContent = error.message || 'Failed to create account. Please try again.';
